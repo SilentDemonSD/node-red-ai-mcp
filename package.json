@@ -35,11 +35,13 @@
     "axios": "^1.11.0",
     "cors": "^2.8.5",
     "express": "^5.2.1",
+    "ws": "^8.21.0",
     "zod": "^4.0.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
+    "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^4.1.8",
     "prettier": "^2.8.8",
     "shx": "^0.3.4",

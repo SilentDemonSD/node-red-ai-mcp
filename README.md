@@ -1,8 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmysterysd%2Fnode-red-mcp%2Fmain%2Fpackage.json&query=%24.version&prefix=v&label=node-red-mcp&color=%238F00FF&style=for-the-badge&logo=nodered&logoColor=white">
-    <img alt="node-red-mcp" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmysterysd%2Fnode-red-mcp%2Fmain%2Fpackage.json&query=%24.version&prefix=v&label=node-red-mcp&color=%238F00FF&style=for-the-badge&logo=nodered&logoColor=black">
-  </picture>
+  <img alt="node-red-mcp" src="docs/node-red-ai-mcp.png" width="100%">
 </p>
 
 <div align="center">
@@ -15,7 +12,7 @@
 
 **A production-ready [MCP](https://modelcontextprotocol.io) server that connects AI assistants (Claude, Copilot, etc.) to the [Node-RED](https://nodered.org/) Admin API.**
 
-Inspect flows, manage nodes, analyze graph topology, apply JSON patches, and rollback changes — all through natural language.
+Inspect flows, manage nodes, analyze graph topology, capture debug output, apply JSON patches, and rollback changes — all through natural language.
 
 </div>
 
@@ -29,6 +26,7 @@ Inspect flows, manage nodes, analyze graph topology, apply JSON patches, and rol
 - [Configuration](#configuration)
 - [Authentication](#authentication)
 - [Usage](#usage)
+  - [Debug Capture](#debug-capture)
   - [Transport Modes](#transport-modes)
 - [Tools Reference](#tools-reference)
   - [Auth](#auth)
@@ -49,9 +47,10 @@ Inspect flows, manage nodes, analyze graph topology, apply JSON patches, and rol
 ## Features
 
 - 🚀 **3 Transport Modes** — stdio (default), SSE, streamable HTTP
-- 🔌 **30 MCP Tools** — full coverage of flows, nodes, runtime, auth, inject, and graph analysis
+- 🔌 **31 MCP Tools** — full coverage of flows, nodes, runtime, auth, inject, graph analysis, and debug capture
 - 📊 **Graph Engine** — auto-builds directed acyclic graph (DAG) from flow topology, detects cycles, sources, sinks, and computes node categories
 - 🔍 **Semantic Search** — query flows by node name, type, topic, URL, or any metadata
+- 🐛 **Live Debug Capture** — WebSocket-based capture of Node-RED debug output, combined with inject or standalone
 - 🔧 **JSON Patch** — RFC 6902 compliant patch engine for incremental flow edits
 - 📸 **Snapshots** — in-memory 20-entry ring buffer per flow for rollback
 - 🔗 **6 Resources + 3 Prompts** — inspect runtime settings, diagnostics, flows, and get AI-assisted analysis
@@ -148,6 +147,23 @@ node-red-mcp sse
 node-red-mcp streamableHttp
 ```
 
+### Debug Capture
+
+Two tools provide real-time debug output capture via Node-RED WebSocket (`/comms`):
+
+| Tool | Description |
+|---|---|
+| `node-red-inject` (with `waitForDebug`) | Inject + capture — fires inject, listens, returns both result and debug messages in one call |
+| `node-red-debug-listen` | Standalone listener — connects, subscribes to `debug`, captures messages for N seconds with optional node/flow filtering |
+
+**Example** (one-call inject + verify):
+```
+node-red-inject({ nodeId: "my-inject", waitForDebug: 5 })
+→ { status: "injected", debug: [...], debugCount: 3 }
+```
+
+Both tools handle Node-RED's array-batched WebSocket format automatically.
+
 ### Transport Modes
 
 | Mode | Protocol | Best For |
@@ -158,7 +174,7 @@ node-red-mcp streamableHttp
 
 ## Tools Reference
 
-All 27 tools are registered with the MCP server. Each returns JSON output.
+All 31 tools are registered with the MCP server. Each returns JSON output.
 
 ### Auth
 
@@ -176,6 +192,7 @@ All 27 tools are registered with the MCP server. Each returns JSON output.
 | `node-red-runtime-get-diagnostics` | Read runtime diagnostics |
 | `node-red-runtime-get-flow-state` | Read runtime flow state |
 | `node-red-runtime-set-flow-state` | Update runtime flow state |
+| `node-red-debug-listen` | Capture debug messages via WebSocket for a duration (optionally filtered by node/flow) |
 
 ### Flows
 
@@ -183,13 +200,13 @@ All 27 tools are registered with the MCP server. Each returns JSON output.
 |---|---|
 | `node-red-flows-list` | List active flow tabs and metadata |
 | `node-red-flows-get` | Get a single flow by id or label |
-| `node-red-flows-create` | Create a new flow tab with nodes |
+| `node-red-flows-create` | Create a new flow tab with nodes (auto-generates IDs, remaps wires) |
 | `node-red-flows-update` | Replace an existing flow tab |
 | `node-red-flows-patch` | Apply JSON Patch (RFC 6902) operations to a flow |
 | `node-red-flows-delete` | Delete a flow tab |
 | `node-red-flows-clone` | Clone an existing flow tab |
 | `node-red-flows-rollback` | Rollback a flow to a previous snapshot |
-| `node-red-inject` | Trigger an inject node by its ID |
+| `node-red-inject` | Trigger an inject node by its ID (optionally `waitForDebug` to capture debug output in one call) |
 
 ### Graph
 
@@ -260,6 +277,7 @@ await client.installNode({ module: "node-red-contrib-something" });
 
 ```typescript
 class NodeRedClient {
+  baseUrl: string;                         // Public getter (for WebSocket URL construction)
   constructor(options: ClientOptions);
 
   // Auth
@@ -370,11 +388,11 @@ npm run prettier:fix
 ```
 src/
 ├── config.ts        # Centralized env var config (NODE_RED_URL, NODE_RED_TOKEN, MCP_SERVER_PORT)
-├── client/          # NodeRedClient — Admin API wrapper
+├── client/          # NodeRedClient — Admin API wrapper (baseUrl public getter)
 ├── graph/           # Standalone graph engine (types, engine, search, patch)
 ├── tools/
 │   ├── auth/        # get-scheme, login, revoke
-│   ├── runtime/     # get-settings, get-diagnostics, get-flow-state, set-flow-state
+│   ├── runtime/     # get-settings, get-diagnostics, get-flow-state, set-flow-state, debug-listen
 │   ├── flows/       # list, get, create, update, patch, delete, clone, rollback, inject
 │   ├── graph/       # analyze, summary, visualize, dependencies, query, pack, export
 │   └── nodes/       # list, install, get-module, toggle-module, remove-module, get-set, toggle-set
@@ -382,7 +400,7 @@ src/
 ├── prompts/         # 3 MCP prompt templates
 ├── server/          # McpServer factory
 ├── transports/      # stdio, SSE, streamableHttp
-├── __tests__/       # 58 unit tests
+├── __tests__/       # 122 unit tests (15 files), 21 live integration tests
 └── index.ts         # CLI entry point
 ```
 

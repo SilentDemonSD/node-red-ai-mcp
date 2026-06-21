@@ -43,19 +43,20 @@ function formatError(status: number | undefined, body: unknown, fallback?: strin
 }
 
 export class NodeRedClient {
-  private readonly baseUrl: string;
+  get baseUrl(): string { return this._baseUrl; }
+  private readonly _baseUrl: string;
   private http: AxiosInstance;
   token: string;
   private username?: string;
   private password?: string;
 
   constructor(options: ClientOptions) {
-    this.baseUrl = options.baseUrl.replace(/\/$/, "");
+    this._baseUrl = options.baseUrl.replace(/\/$/, "");
     this.token = options.accessToken ?? "";
     this.username = options.username;
     this.password = options.password;
     this.http = axios.create({
-      baseURL: this.baseUrl,
+      baseURL: this._baseUrl,
       validateStatus: () => true,
     });
   }
