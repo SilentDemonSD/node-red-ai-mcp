@@ -3,6 +3,7 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { type NodeRedClient } from "../../client/index.js";
 import type { FlowDocument } from "../../graph/types.js";
+import { autoLayout } from "./layout.js";
 
 function generateId(): string {
   return randomUUID().replace(/-/g, "");
@@ -38,6 +39,7 @@ export function registerCreateFlowTool(server: McpServer, client: NodeRedClient)
         }
         return next;
       });
+      autoLayout(nodes);
       const doc = {
         id: flowId,
         label: args.label,

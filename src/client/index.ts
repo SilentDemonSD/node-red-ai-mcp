@@ -153,10 +153,16 @@ export class NodeRedClient {
   }
 
   async setFlowState(state: unknown): Promise<unknown> {
-    const payload = state && typeof state === "object" && !Array.isArray(state)
-      ? state
-      : { state };
-    return this.request("POST", "/flows/state", payload);
+    const stateValue =
+      state && typeof state === "object" && !Array.isArray(state)
+        ? (state as Record<string, unknown>).state ?? state
+        : state;
+    return this.request(
+      "POST",
+      "/flows/state",
+      { state: String(stateValue) },
+      { formUrlEncoded: true }
+    );
   }
 
   /* ───── Flows ───── */
@@ -204,11 +210,13 @@ export class NodeRedClient {
   }
 
   async getNodeSet(module: string, set: string): Promise<unknown> {
-    return this.request("GET", `/nodes/${encodeURIComponent(module)}/${encodeURIComponent(set)}`);
+    const shortName = set.startsWith(`${module}/`) ? set.slice(module.length + 1) : set;
+    return this.request("GET", `/nodes/${encodeURIComponent(module)}/${encodeURIComponent(shortName)}`);
   }
 
   async toggleNodeSet(module: string, set: string, enabled: boolean): Promise<unknown> {
-    return this.request("PUT", `/nodes/${encodeURIComponent(module)}/${encodeURIComponent(set)}`, { enabled });
+    const shortName = set.startsWith(`${module}/`) ? set.slice(module.length + 1) : set;
+    return this.request("PUT", `/nodes/${encodeURIComponent(module)}/${encodeURIComponent(shortName)}`, { enabled });
   }
 
   /* ───── Inject ───── */

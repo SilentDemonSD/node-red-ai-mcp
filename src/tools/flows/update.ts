@@ -3,6 +3,7 @@ import { z } from "zod";
 import { type NodeRedClient } from "../../client/index.js";
 import { buildGraph } from "../../graph/engine.js";
 import { recordSnapshot } from "./snapshots.js";
+import { autoLayout } from "./layout.js";
 
 export function registerUpdateFlowTool(server: McpServer, client: NodeRedClient): void {
   server.registerTool(
@@ -26,11 +27,13 @@ export function registerUpdateFlowTool(server: McpServer, client: NodeRedClient)
           throw new Error(`Revision conflict: expected ${args.expectedRev}, current ${rev}`);
         }
       }
+      const nodes = [...args.nodes];
+      autoLayout(nodes);
       const updated = {
         ...existing,
         id: existing.id ?? args.id,
         label: args.label ?? existing.label,
-        nodes: args.nodes,
+        nodes,
       } as unknown as typeof existing;
       const flows = await client.getFlows();
       recordSnapshot(args.id, existing, buildGraph(flows).rev);
