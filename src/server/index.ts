@@ -18,7 +18,7 @@ export function createServer(client: NodeRedClient): ServerFactoryResponse {
     {
       name: "@mysterysd/node-red-mcp",
       title: "Node-RED MCP Server",
-      version: "2.0.0",
+      version: "2.0.1",
     },
     {
       capabilities: {
