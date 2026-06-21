@@ -1,5 +1,5 @@
 <p align="center">
-  <img alt="node-red-mcp" src="docs/node-red-ai-mcp.png" width="100%">
+  <img alt="node-red-mcp" src="docs/node-red-ai-mcp.png" width="60%">
 </p>
 
 <div align="center">
