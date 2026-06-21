@@ -23,10 +23,25 @@ export function registerCreateFlowTool(server: McpServer, client: NodeRedClient)
     },
     async (args) => {
       const flowId = generateId();
+      const remap = new Map<string, string>();
+      for (const node of args.nodes) {
+        const oldId = (node.id as string) || generateId();
+        remap.set(oldId, generateId());
+      }
+      const nodes = args.nodes.map((n: Record<string, unknown>) => {
+        const oldId = (n.id as string) || "";
+        const next: Record<string, unknown> = { ...n, id: remap.get(oldId) ?? generateId(), z: flowId };
+        if (Array.isArray(next.wires)) {
+          next.wires = next.wires.map((ports: unknown) =>
+            Array.isArray(ports) ? ports.map((tid: string) => remap.get(tid) ?? tid) : ports
+          );
+        }
+        return next;
+      });
       const doc = {
         id: flowId,
         label: args.label,
-        nodes: args.nodes.map((n) => ({ ...n, id: (n.id as string) || generateId(), z: flowId })),
+        nodes,
         configs: args.configs,
         subflows: args.subflows,
       } as unknown as FlowDocument;
