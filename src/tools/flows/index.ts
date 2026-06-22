@@ -9,6 +9,11 @@ import { registerDeleteFlowTool } from "./delete.js";
 import { registerCloneFlowTool } from "./clone.js";
 import { registerRollbackFlowTool } from "./rollback.js";
 import { registerInjectTool } from "./inject.js";
+import { registerAddNodeTool } from "./add-node.js";
+import { registerRemoveNodeTool } from "./remove-node.js";
+import { registerUpdateNodeTool } from "./update-node.js";
+import { registerRewireNodeTool } from "./rewire-node.js";
+import { registerMoveNodeTool } from "./move-node.js";
 
 export function registerFlowTools(server: McpServer, client: NodeRedClient): void {
   registerListFlowsTool(server, client);
@@ -20,4 +25,9 @@ export function registerFlowTools(server: McpServer, client: NodeRedClient): voi
   registerCloneFlowTool(server, client);
   registerRollbackFlowTool(server, client);
   registerInjectTool(server, client);
+  registerAddNodeTool(server, client);
+  registerRemoveNodeTool(server, client);
+  registerUpdateNodeTool(server, client);
+  registerRewireNodeTool(server, client);
+  registerMoveNodeTool(server, client);
 }

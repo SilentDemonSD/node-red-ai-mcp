@@ -7,6 +7,7 @@ import { registerToggleModuleTool } from "./toggle-module.js";
 import { registerRemoveModuleTool } from "./remove-module.js";
 import { registerGetSetTool } from "./get-set.js";
 import { registerToggleSetTool } from "./toggle-set.js";
+import { registerResolveNodeTool } from "./resolve.js";
 
 export function registerNodeTools(server: McpServer, client: NodeRedClient): void {
   registerListNodesTool(server, client);
@@ -16,4 +17,5 @@ export function registerNodeTools(server: McpServer, client: NodeRedClient): voi
   registerRemoveModuleTool(server, client);
   registerGetSetTool(server, client);
   registerToggleSetTool(server, client);
+  registerResolveNodeTool(server, client);
 }

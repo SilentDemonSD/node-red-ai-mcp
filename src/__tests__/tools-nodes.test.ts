@@ -4,6 +4,31 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { registerNodeTools } from "../tools/nodes/index.js";
 
+vi.mock("../graph/registry.js", () => {
+  const mockEntries = [
+    { id: "n1", type: "inject", name: "Trigger", flowId: "tab1", flowLabel: "Alpha", category: "source" },
+    { id: "n2", type: "function", name: "Processor", flowId: "tab1", flowLabel: "Alpha", category: "transform" },
+    { id: "n3", type: "inject", name: "Starter", flowId: "tab2", flowLabel: "Beta", category: "source" },
+  ];
+  return {
+    lookupInRegistry: vi.fn((q: string, fid?: string) =>
+      mockEntries.filter((e) => {
+        if (fid && e.flowId !== fid) return false;
+        return (
+          e.name.toLowerCase().includes(q.toLowerCase()) ||
+          e.type.toLowerCase().includes(q.toLowerCase()) ||
+          e.id.toLowerCase() === q.toLowerCase()
+        );
+      })
+    ),
+    getRegistryForFlow: vi.fn((label: string) =>
+      mockEntries.filter((e) => e.flowLabel.toLowerCase() === label.toLowerCase())
+    ),
+    getRegistrySnapshot: vi.fn().mockReturnValue(mockEntries),
+    refreshRegistry: vi.fn().mockResolvedValue(undefined),
+  };
+});
+
 const mockClient = {
   listNodes: vi.fn(),
   getNodeModule: vi.fn(),
@@ -90,5 +115,57 @@ describe("Nodes Tools", () => {
     const r = await callTool("node-red-nodes-toggle-set", { module: "@test/mod", set: "my-node", enabled: true });
     const data = JSON.parse(r.content[0].text);
     expect(data.enabled).toBe(true);
+  });
+
+  it("nodes-resolve finds nodes by name", async () => {
+    const r = await callTool("node-red-nodes-resolve", { query: "Processor" });
+    const data = JSON.parse(r.content[0].text);
+    expect(data.matches).toHaveLength(1);
+    expect(data.matches[0].id).toBe("n2");
+  });
+
+  it("nodes-resolve finds nodes by type", async () => {
+    const r = await callTool("node-red-nodes-resolve", { query: "function" });
+    const data = JSON.parse(r.content[0].text);
+    expect(data.matches).toHaveLength(1);
+    expect(data.matches[0].type).toBe("function");
+  });
+
+  it("nodes-resolve filters by flowId", async () => {
+    const r = await callTool("node-red-nodes-resolve", { query: "inject", flowId: "tab1" });
+    const data = JSON.parse(r.content[0].text);
+    expect(data.matches).toHaveLength(1);
+    expect(data.matches[0].id).toBe("n1");
+  });
+
+  it("nodes-resolve returns all nodes in a flow by flowLabel", async () => {
+    const r = await callTool("node-red-nodes-resolve", { flowLabel: "Alpha" });
+    const data = JSON.parse(r.content[0].text);
+    expect(data.matches).toHaveLength(2);
+  });
+
+  it("nodes-resolve returns empty for no matches", async () => {
+    const r = await callTool("node-red-nodes-resolve", { query: "nonexistent" });
+    const data = JSON.parse(r.content[0].text);
+    expect(data.matches).toHaveLength(0);
+  });
+
+  it("nodes-resolve returns empty when no query or flowLabel", async () => {
+    const r = await callTool("node-red-nodes-resolve", {});
+    const data = JSON.parse(r.content[0].text);
+    expect(data.matches).toHaveLength(0);
+  });
+
+  it("nodes-resolve filters by flowLabel + query combo", async () => {
+    const r = await callTool("node-red-nodes-resolve", { flowLabel: "Alpha", query: "Trigger" });
+    const data = JSON.parse(r.content[0].text);
+    expect(data.matches).toHaveLength(1);
+    expect(data.matches[0].name).toBe("Trigger");
+  });
+
+  it("nodes-resolve returns empty when flowLabel + query mismatch", async () => {
+    const r = await callTool("node-red-nodes-resolve", { flowLabel: "Beta", query: "Nonexistent" });
+    const data = JSON.parse(r.content[0].text);
+    expect(data.matches).toHaveLength(0);
   });
 });

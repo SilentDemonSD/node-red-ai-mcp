@@ -18,6 +18,86 @@ Inspect flows, manage nodes, analyze graph topology, capture debug output, apply
 
 ---
 
+## Architecture
+
+```mermaid
+graph TB
+    subgraph "AI Client"
+        A[Claude Desktop]
+        B[VS Code MCP]
+        C[Custom Client]
+    end
+
+    subgraph "MCP Server @mysterysd/node-red-mcp"
+        direction LR
+        T[Transport Layer<br/>stdio / SSE / streamableHttp]
+        S[Server Factory<br/>McpServer]
+        T --> S
+        S --> Tools[38 Tools<br/>flows / nodes / graph / auth / runtime]
+        S --> Res[7 Resources<br/>settings / flows / graph / registry]
+        S --> Prompts[3 Prompts<br/>analyze / repair / refactor]
+        Tools --> GE[Graph Engine<br/>DAG analysis / cycles / search]
+        Tools --> NR[Node Registry<br/>persistent name-to-ID lookup]
+        Tools --> Snap[Snapshots<br/>20-deep ring buffer per flow]
+        Tools --> Debug[Debug Capture<br/>WebSocket /comms]
+    end
+
+    subgraph "Node-RED Instance"
+        NR_API[Admin REST API<br/>:1880]
+        NR_WS[WebSocket<br/>:1880/comms]
+    end
+
+    A & B & C -->|MCP Protocol| T
+    S -->|axios| NR_API
+    Debug -->|ws| NR_WS
+```
+
+## Data Flow
+
+```mermaid
+sequenceDiagram
+    participant AI as AI Assistant
+    participant MCP as node-red-mcp
+    participant NR as Node-RED
+
+    AI->>MCP: flows-create(label, nodes)
+    MCP->>MCP: auto-generate node IDs
+    MCP->>MCP: auto-layout positions
+    MCP->>NR: POST /flow
+    NR-->>MCP: { id, rev }
+    MCP->>MCP: refresh NodeRegistry
+    MCP-->>AI: { status, flowId }
+
+    AI->>MCP: flows-add-node(flowId, node)
+    MCP->>NR: GET /flow/:id
+    MCP->>MCP: snapshot current state
+    MCP->>MCP: append node, validate wires
+    MCP->>NR: PUT /flow/:id
+    MCP->>MCP: refresh NodeRegistry
+    MCP-->>AI: { status, nodeId }
+
+    AI->>MCP: nodes-resolve(query)
+    MCP->>MCP: lookup in NodeRegistry
+    MCP-->>AI: { matches: [...] }
+```
+
+---
+
+## Features
+
+- 🚀 **3 Transport Modes** — stdio (default), SSE, streamable HTTP
+- 🔌 **38 MCP Tools** — full coverage of flows, nodes, runtime, auth, inject, graph analysis, and debug capture
+- 🧩 **5 Node-Level Mutation Tools** — add, remove, update, rewire, and move individual nodes without rewriting entire flows
+- 📊 **Graph Engine** — auto-builds directed acyclic graph (DAG) from flow topology, detects cycles, sources, sinks, and computes node categories
+- 🗃️ **Node Registry** — persistent, auto-synced hot DB for looking up node IDs by name, type, label, and flow
+- 🔍 **Semantic Search** — query flows by node name, type, topic, URL, or any metadata
+- 🐛 **Live Debug Capture** — WebSocket-based capture of Node-RED debug output, combined with inject or standalone
+- 🔧 **JSON Patch** — RFC 6902 compliant patch engine for incremental flow edits
+- 📸 **Snapshots** — in-memory 20-entry ring buffer per flow for rollback
+- 🔗 **7 Resources + 3 Prompts** — inspect runtime settings, diagnostics, flows, graph, registry, and get AI-assisted analysis
+
+---
+
 ## Table of Contents
 
 - [Features](#features)
@@ -26,16 +106,16 @@ Inspect flows, manage nodes, analyze graph topology, capture debug output, apply
 - [Configuration](#configuration)
 - [Authentication](#authentication)
 - [Usage](#usage)
-  - [Debug Capture](#debug-capture)
-  - [Transport Modes](#transport-modes)
 - [Tools Reference](#tools-reference)
   - [Auth](#auth)
   - [Runtime](#runtime)
   - [Flows](#flows)
+  - [Node-Level Mutations](#node-level-mutations)
   - [Graph](#graph)
   - [Nodes](#nodes)
 - [Resources](#resources)
 - [Prompts](#prompts)
+- [Node Registry](#node-registry)
 - [Client Library](#client-library)
 - [Graph Engine](#graph-engine)
 - [Development](#development)
@@ -43,17 +123,6 @@ Inspect flows, manage nodes, analyze graph topology, capture debug output, apply
 - [License](#license)
 
 ---
-
-## Features
-
-- 🚀 **3 Transport Modes** — stdio (default), SSE, streamable HTTP
-- 🔌 **31 MCP Tools** — full coverage of flows, nodes, runtime, auth, inject, graph analysis, and debug capture
-- 📊 **Graph Engine** — auto-builds directed acyclic graph (DAG) from flow topology, detects cycles, sources, sinks, and computes node categories
-- 🔍 **Semantic Search** — query flows by node name, type, topic, URL, or any metadata
-- 🐛 **Live Debug Capture** — WebSocket-based capture of Node-RED debug output, combined with inject or standalone
-- 🔧 **JSON Patch** — RFC 6902 compliant patch engine for incremental flow edits
-- 📸 **Snapshots** — in-memory 20-entry ring buffer per flow for rollback
-- 🔗 **6 Resources + 3 Prompts** — inspect runtime settings, diagnostics, flows, and get AI-assisted analysis
 
 ## Installation
 
@@ -82,7 +151,12 @@ export NODE_RED_URL=http://my-nodered:1880
 npx @mysterysd/node-red-mcp
 ```
 
-Then configure your MCP client (Claude Desktop, VS Code, etc.):
+Then configure your MCP client:
+
+> [!TIP]
+> The server auto-refreshes the Node Registry on startup, so all your nodes are immediately searchable by name.
+
+### Claude Desktop / VS Code
 
 ```json
 {
@@ -93,6 +167,22 @@ Then configure your MCP client (Claude Desktop, VS Code, etc.):
       "env": {
         "NODE_RED_URL": "http://localhost:1880",
         "NODE_RED_ACCESS_TOKEN": "your-token"
+      }
+    }
+  }
+}
+```
+
+### opencode
+
+```json
+{
+  "mcpServers": {
+    "node-red": {
+      "command": "node",
+      "args": ["path/to/dist/index.js", "stdio"],
+      "env": {
+        "NODE_RED_URL": "http://localhost:1880"
       }
     }
   }
@@ -112,6 +202,10 @@ All configuration is via environment variables:
 | `NODE_RED_PASSWORD` | — | Password for password-based auth |
 | `MCP_SERVER_PORT` | `3001` (SSE), `3002` (streamable HTTP) | HTTP server port for HTTP transports |
 | `PORT` | `3001` (SSE), `3002` (streamable HTTP) | Fallback port (overridden by `MCP_SERVER_PORT`) |
+| `NODE_REGISTRY_PATH` | `./node-registry.json` | File path for persistent Node Registry |
+
+> [!NOTE]
+> Copy `.env.example` to `.env` as a reference for all available environment variables.
 
 ## Authentication
 
@@ -120,7 +214,6 @@ The server supports two auth methods:
 1. **Token-based** (recommended):
    ```bash
    export NODE_RED_TOKEN="your-bearer-token"
-   # or: export NODE_RED_ACCESS_TOKEN="your-bearer-token"
    ```
 
 2. **Password-based** (auto-login on first request):
@@ -131,7 +224,8 @@ The server supports two auth methods:
 
 If neither is set, the server will attempt unauthenticated requests (Node-RED's default for local-only deployments).
 
-> 💡 Copy `.env.example` to `.env` as a reference for all available environment variables. Use `MCP_SERVER_PORT` to control the HTTP server port.
+> [!WARNING]
+> Avoid using `NODE_RED_TOKEN` in shared or version-controlled config files. Use environment-specific secrets whenever possible.
 
 ## Usage
 
@@ -147,6 +241,14 @@ node-red-mcp sse
 node-red-mcp streamableHttp
 ```
 
+### Transport Modes
+
+| Mode | Protocol | Best For |
+|---|---|---|
+| `stdio` | stdin/stdout JSON-RPC | Claude Desktop, VS Code MCP extensions |
+| `sse` | Server-Sent Events | Remote or containerized setups |
+| `streamableHttp` | HTTP POST + DELETE | Stateless proxies, load-balanced deployments |
+
 ### Debug Capture
 
 Two tools provide real-time debug output capture via Node-RED WebSocket (`/comms`):
@@ -157,24 +259,19 @@ Two tools provide real-time debug output capture via Node-RED WebSocket (`/comms
 | `node-red-debug-listen` | Standalone listener — connects, subscribes to `debug`, captures messages for N seconds with optional node/flow filtering |
 
 **Example** (one-call inject + verify):
-```
-node-red-inject({ nodeId: "my-inject", waitForDebug: 5 })
+
+```json
+// node-red-inject({ nodeId: "my-inject", waitForDebug: 5 })
 → { status: "injected", debug: [...], debugCount: 3 }
 ```
 
 Both tools handle Node-RED's array-batched WebSocket format automatically.
 
-### Transport Modes
-
-| Mode | Protocol | Best For |
-|---|---|---|
-| `stdio` | stdin/stdout JSON-RPC | Claude Desktop, VS Code MCP extensions |
-| `sse` | Server-Sent Events | Remote or containerized setups |
-| `streamableHttp` | HTTP POST + DELETE | Stateless proxies, load-balanced deployments |
+---
 
 ## Tools Reference
 
-All 31 tools are registered with the MCP server. Each returns JSON output.
+All 38 tools are registered with the MCP server. Each returns JSON output.
 
 ### Auth
 
@@ -200,13 +297,23 @@ All 31 tools are registered with the MCP server. Each returns JSON output.
 |---|---|
 | `node-red-flows-list` | List active flow tabs and metadata |
 | `node-red-flows-get` | Get a single flow by id or label |
-| `node-red-flows-create` | Create a new flow tab with nodes (auto-generates IDs, remaps wires) |
-| `node-red-flows-update` | Replace an existing flow tab |
+| `node-red-flows-create` | Create a new flow tab with nodes (auto-generates IDs, auto-layouts positions, remaps wires) |
+| `node-red-flows-update` | Replace an existing flow tab (auto-layouts positions) |
 | `node-red-flows-patch` | Apply JSON Patch (RFC 6902) operations to a flow |
 | `node-red-flows-delete` | Delete a flow tab |
 | `node-red-flows-clone` | Clone an existing flow tab |
 | `node-red-flows-rollback` | Rollback a flow to a previous snapshot |
 | `node-red-inject` | Trigger an inject node by its ID (optionally `waitForDebug` to capture debug output in one call) |
+
+### Node-Level Mutations
+
+| Tool | Description |
+|---|---|
+| `node-red-flows-add-node` | Add a single node to an existing flow tab. Auto-generates ID if omitted, validates wire targets, positions intelligently. |
+| `node-red-flows-remove-node` | Remove a single node from a flow tab. Cleans up wire references from all remaining nodes. |
+| `node-red-flows-update-node` | Update specific properties of a single node by ID. Deep-merges the provided properties onto the existing node. Reports which keys changed. |
+| `node-red-flows-rewire-node` | Replace all wire connections for a specific node. Validates all target IDs exist in the flow. |
+| `node-red-flows-move-node` | Move a single node to a specific visual position (x, y) within a flow tab. |
 
 ### Graph
 
@@ -231,6 +338,9 @@ All 31 tools are registered with the MCP server. Each returns JSON output.
 | `node-red-nodes-remove-module` | Remove a node module |
 | `node-red-nodes-get-set` | Inspect a specific node set within a module |
 | `node-red-nodes-toggle-set` | Enable or disable a node set |
+| `node-red-nodes-resolve` | Look up node IDs by name, type, description, or flow label using the Node Registry |
+
+---
 
 ## Resources
 
@@ -242,6 +352,7 @@ All 31 tools are registered with the MCP server. Each returns JSON output.
 | `node-red://nodes` | All installed nodes (JSON) |
 | `node-red://graph` | Full graph snapshot (serializable format) |
 | `node-red://flow/{id}` | Single flow by ID (template) |
+| `node-red://registry` | Node Registry snapshot — all indexed nodes with names, types, flow labels, and categories |
 
 ## Prompts
 
@@ -250,6 +361,50 @@ All 31 tools are registered with the MCP server. Each returns JSON output.
 | `analyze-flow` | Analyze a flow for risks, dependencies, and graph structure |
 | `repair-flow` | Draft a repair plan for invalid or broken flow wiring |
 | `refactor-flow` | Suggest a graph-aware refactor plan for a flow |
+
+---
+
+## Node Registry
+
+The Node Registry is a persistent, auto-synced hot database that indexes every node across all flows.
+
+```mermaid
+graph LR
+    subgraph "Node Registry"
+        NR[(registry.json)]
+        L[lookupInRegistry]
+        GF[getRegistryForFlow]
+        GS[getRegistrySnapshot]
+    end
+
+    MC[flows-create] -->|refresh| NR
+    MU[5 Mutation Tools] -->|refresh| NR
+    FU[flows-update] -->|refresh| NR
+    ST[Server Start] -->|initial load| NR
+    NR -->|query| RS[nodes-resolve tool]
+    NR -->|expose| RES[node-red://registry resource]
+```
+
+### How it works
+
+1. **Startup**: `refreshRegistry(client)` fetches all flows via Admin API and builds an index
+2. **Persistence**: Index saved to `NODE_REGISTRY_PATH` (default: `./node-registry.json`) as JSON
+3. **Auto-sync**: Every mutation tool (add, remove, update, rewire, move) and flows-create/update triggers a refresh
+4. **Lookup**: Search by name, type, ID, or flow label with fuzzy matching and result ranking
+5. **Categories**: Each node is categorized as `source`, `debug`, `transform`, `network`, `messaging`, `storage`, `template`, `dashboard`, `config`, or `other`
+
+**Example query**:
+```json
+// nodes-resolve({ query: "Temperature", flowLabel: "Factory Floor" })
+→ {
+  "matches": [
+    { "id": "abc123", "type": "inject", "name": "Temperature Sensor",
+      "flowId": "...", "flowLabel": "Factory Floor", "category": "source" }
+  ]
+}
+```
+
+---
 
 ## Client Library
 
@@ -307,14 +462,12 @@ class NodeRedClient {
   getNodeSet(module: string, set: string): Promise<unknown>;
   toggleNodeSet(module: string, set: string, enabled: boolean): Promise<unknown>;
 
-  // Flow State
-  getFlowState(): Promise<unknown>;
-  setFlowState(state: unknown): Promise<unknown>;
-
   // Inject
   inject(nodeId: string): Promise<unknown>;
 }
 ```
+
+---
 
 ## Graph Engine
 
@@ -326,6 +479,19 @@ import { queryGraph } from "@mysterysd/node-red-mcp/graph/search";
 import { applyPatch } from "@mysterysd/node-red-mcp/graph/patch";
 ```
 
+```mermaid
+graph TD
+    RAW[Raw Flows<br/>from Admin API] --> BG[buildGraph]
+    BG --> FG[FlowGraph]
+    FG --> VA[graph-analyze]
+    FG --> VS[graph-visualize]
+    FG --> DP[graph-dependencies]
+    FG --> QY[queryGraph<br/>semantic search]
+    FG --> PK[graph-pack<br/>context pack]
+    FG --> SM[summarizeGraph]
+    FG --> EX[graph-export]
+```
+
 ### Graph Types
 
 ```typescript
@@ -334,12 +500,12 @@ interface FlowGraph {
   tabs: FlowTab[];
   nodes: FlowNode[];
   nodeById: Map<string, FlowNode>;
-  adjacency: Map<string, string[]>;       // forward edges
-  reverseAdjacency: Map<string, Set<string>>; // backward edges
+  adjacency: Map<string, string[]>;            // forward edges
+  reverseAdjacency: Map<string, Set<string>>;  // backward edges
   edges: GraphEdge[];
-  sources: string[];      // nodes with 0 in-degree
-  sinks: string[];        // nodes with 0 out-degree
-  cycles: string[][];     // detected cycles
+  sources: string[];       // nodes with 0 in-degree
+  sinks: string[];         // nodes with 0 out-degree
+  cycles: string[][];      // detected cycles
   categories: Map<string, NodeCategory>;
 }
 ```
@@ -349,7 +515,7 @@ interface FlowGraph {
 | Function | Description |
 |---|---|
 | `buildGraph(flowsResponse)` | Build a `FlowGraph` from raw Node-RED API response |
-| `categorizeNode(node)` | Classify node as trigger, sink, transform, subflow, config, or other |
+| `categorizeNode(node)` | Classify node as source, debug, transform, subflow, config, dashboard, or other |
 | `isConfigNode(node)` | Check if a node is a config node (no position, no wires) |
 | `collectClosure(map, start)` | BFS/DFS from a start node to collect all reachable nodes |
 | `graphToSerializable(graph)` | Convert graph to plain JSON-safe format |
@@ -360,6 +526,8 @@ interface FlowGraph {
 | `collectRelevantSubgraph(graph, index, query, opts)` | Find matching nodes + expand to neighbors |
 | `summarizeGraph(graph)` | Generate a summary with counts, categories, risky nodes |
 | `applyPatch(document, operations)` | Apply RFC 6902 JSON Patch operations |
+
+---
 
 ## Development
 
@@ -387,22 +555,37 @@ npm run prettier:fix
 
 ```
 src/
-├── config.ts        # Centralized env var config (NODE_RED_URL, NODE_RED_TOKEN, MCP_SERVER_PORT)
-├── client/          # NodeRedClient — Admin API wrapper (baseUrl public getter)
-├── graph/           # Standalone graph engine (types, engine, search, patch)
+├── config.ts          # Centralized env var config
+├── client/            # NodeRedClient — Admin API wrapper
+├── graph/             # Graph engine (types, engine, search, patch, registry)
+│   └── registry.ts    # NodeRegistry — persistent name-to-ID hot DB
 ├── tools/
-│   ├── auth/        # get-scheme, login, revoke
-│   ├── runtime/     # get-settings, get-diagnostics, get-flow-state, set-flow-state, debug-listen
-│   ├── flows/       # list, get, create, update, patch, delete, clone, rollback, inject
-│   ├── graph/       # analyze, summary, visualize, dependencies, query, pack, export
-│   └── nodes/       # list, install, get-module, toggle-module, remove-module, get-set, toggle-set
-├── resources/       # 6 MCP resource handlers
-├── prompts/         # 3 MCP prompt templates
-├── server/          # McpServer factory
-├── transports/      # stdio, SSE, streamableHttp
-├── __tests__/       # 122 unit tests (15 files), 21 live integration tests
-└── index.ts         # CLI entry point
+│   ├── auth/          # 3 tools: get-scheme, login, revoke
+│   ├── runtime/       # 5 tools: settings, diagnostics, flow-state, debug-listen
+│   ├── flows/         # 14 tools: list, get, create, update, patch, delete, clone,
+│   │                  #   rollback, inject, add-node, remove-node, update-node,
+│   │                  #   rewire-node, move-node
+│   │   └── mutation-utils.ts  # Shared mutateFlow() utility
+│   ├── graph/         # 7 tools: analyze, summary, visualize, dependencies,
+│   │                  #   query, pack, export
+│   └── nodes/         # 8 tools: list, install, get-module, toggle-module,
+│                       #   remove-module, get-set, toggle-set, resolve
+├── resources/         # 7 MCP resource handlers (incl. registry)
+├── prompts/           # 3 MCP prompt templates
+├── server/            # McpServer factory
+├── transports/        # stdio, SSE, streamableHttp
+├── __tests__/         # 171 unit tests (17 files)
+└── index.ts           # CLI entry point
 ```
+
+### Test Stats
+
+- **171 unit tests** across 17 test files
+- **~77% overall coverage** (core modules at 100%)
+- **25 integration tests** against live Node-RED
+- Coverage includes: all 5 mutation tools (94–100%), registry (90%), resolve (100%)
+
+---
 
 ## Docker
 
@@ -430,6 +613,8 @@ Build and run:
 docker build -t node-red-mcp .
 docker run -e NODE_RED_URL=http://host.docker.internal:1880 -p 3002:3002 node-red-mcp
 ```
+
+---
 
 ## License
 

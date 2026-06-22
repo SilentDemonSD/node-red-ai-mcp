@@ -4,6 +4,7 @@ import { type NodeRedClient } from "../../client/index.js";
 import { buildGraph } from "../../graph/engine.js";
 import { recordSnapshot } from "./snapshots.js";
 import { autoLayout } from "./layout.js";
+import { refreshRegistry } from "../../graph/registry.js";
 
 export function registerUpdateFlowTool(server: McpServer, client: NodeRedClient): void {
   server.registerTool(
@@ -38,6 +39,7 @@ export function registerUpdateFlowTool(server: McpServer, client: NodeRedClient)
       const flows = await client.getFlows();
       recordSnapshot(args.id, existing, buildGraph(flows).rev);
       const result = await client.updateFlow(args.id, updated);
+      await refreshRegistry(client);
       return { content: [{ type: "text", text: JSON.stringify({ status: "updated", result }, null, 2) }] };
     }
   );

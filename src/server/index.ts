@@ -7,6 +7,7 @@ import { registerGraphTools } from "../tools/graph/index.js";
 import { registerNodeTools } from "../tools/nodes/index.js";
 import { registerResources } from "../resources/index.js";
 import { registerPrompts } from "../prompts/index.js";
+import { refreshRegistry } from "../graph/registry.js";
 
 export type ServerFactoryResponse = {
   server: McpServer;
@@ -14,11 +15,13 @@ export type ServerFactoryResponse = {
 };
 
 export function createServer(client: NodeRedClient): ServerFactoryResponse {
+  refreshRegistry(client).catch(() => {});
+
   const server = new McpServer(
     {
       name: "@mysterysd/node-red-mcp",
       title: "Node-RED MCP Server",
-      version: "2.0.1",
+      version: "2.0.4",
     },
     {
       capabilities: {

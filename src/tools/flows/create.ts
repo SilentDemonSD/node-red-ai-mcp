@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { type NodeRedClient } from "../../client/index.js";
 import type { FlowDocument } from "../../graph/types.js";
 import { autoLayout } from "./layout.js";
+import { refreshRegistry } from "../../graph/registry.js";
 
 function generateId(): string {
   return randomUUID().replace(/-/g, "");
@@ -48,6 +49,7 @@ export function registerCreateFlowTool(server: McpServer, client: NodeRedClient)
         subflows: args.subflows,
       } as unknown as FlowDocument;
       const created = await client.createFlow(doc);
+      await refreshRegistry(client);
       return {
         content: [
           {

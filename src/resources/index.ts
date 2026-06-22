@@ -1,6 +1,7 @@
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { type NodeRedClient } from "../client/index.js";
 import { buildGraph, graphToSerializable } from "../graph/engine.js";
+import { getRegistrySnapshot, refreshRegistry } from "../graph/registry.js";
 
 export function registerResources(server: McpServer, client: NodeRedClient): void {
   server.resource(
@@ -56,6 +57,15 @@ export function registerResources(server: McpServer, client: NodeRedClient): voi
     async (uri, params) => {
       const flowId = params?.id as string;
       const data = await client.getFlow(flowId);
+      return { contents: [{ uri: uri.href, mimeType: "application/json", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.resource(
+    "Node Registry",
+    "node-red://registry",
+    async (uri) => {
+      const data = getRegistrySnapshot();
       return { contents: [{ uri: uri.href, mimeType: "application/json", text: JSON.stringify(data, null, 2) }] };
     }
   );
